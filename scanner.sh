@@ -1,12 +1,7 @@
 #!/bin/bash
-
-
-source modules/scan_files.sh 
-
-#!/bin/bash
 # ============================================================
 # AutoDefender — Intelligent Linux Security Scanner
-# Point d'entrée principal
+# Auteur principal : Membre 1 (Bessar)
 # ============================================================
 
 # ---------- VARIABLES GLOBALES ----------
@@ -19,17 +14,15 @@ CPU_THRESHOLD=80
 FAILED_LOGIN_THRESHOLD=5
 
 # ---------- CHARGEMENT DES MODULES ----------
-# On récupère le dossier où se trouve autodefender.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULES="$SCRIPT_DIR/modules"
 
-# Source = "importer" le fichier → ses fonctions deviennent disponibles ici
 source "$MODULES/log.sh"
 source "$MODULES/help.sh"
 source "$MODULES/scan_ports.sh"
 source "$MODULES/scan_processes.sh"
-source "$MODULES/scan_files.sh"        
-source "$MODULES/scan_logs.sh"         
+source "$MODULES/scan_files.sh"
+source "$MODULES/scan_logs.sh"
 source "$MODULES/scoring_engine.sh"
 source "$MODULES/response_engine.sh"
 source "$MODULES/simulate_attack.sh"
@@ -37,18 +30,13 @@ source "$MODULES/simulate_attack.sh"
 # ---------- FONCTION MAIN ----------
 main() {
 
-    # Créer le dossier de logs s'il n'existe pas
     mkdir -p "$LOG_DIR"
+    init_logger
 
-    # -----------------------------------------------
-    # getopts = parser les flags passés en ligne de commande
-    # ex: ./autodefender.sh -a -l /var/log -t
-    #
-    # chaque lettre = un flag
-
-    # lettre: (avec :) = attend une valeur après le flag
-    # ex: -l /var/log   →  l est suivi d'une valeur
-    # -----------------------------------------------
+    if [ $# -eq 0 ]; then
+        help
+        exit 0
+    fi
 
     local flag_ports=false
     local flag_processes=false
@@ -61,33 +49,41 @@ main() {
     local flag_simulate=false
     local custom_log_dir=""
 
-    while getopts ":hpcflastrl:" opt; do
+    for arg in "$@"; do
+        if [ "$arg" = "--simulate-attack" ]; then
+            flag_simulate=true
+        fi
+    done
+
+    while getopts ":hpcfl:astr" opt; do
         case $opt in
             h) help ; exit 0 ;;
             p) flag_ports=true ;;
             c) flag_processes=true ;;
-            f) flag_files=true ;;          # ← appelle scan_files
-            l) custom_log_dir="$OPTARG"    # ← reçoit le chemin ex: -l /var/log
-               flag_logs=true ;;           # ← appelle scan_logs
-            a) flag_all=true ;;            # ← appelle TOUT
+            f) flag_files=true ;;
+            l) custom_log_dir="$OPTARG"
+               flag_logs=true ;;
+            a) flag_all=true ;;
             s) flag_subshell=true ;;
             t) flag_parallel=true ;;
             r) flag_reset=true ;;
-            --) shift; [ "$1" = "--simulate-attack" ] && flag_simulate=true ;;
+            :) echo "Option -$OPTARG necessite un argument." ; exit 1 ;;
             ?) echo "Flag inconnu : -$OPTARG" ; help ; exit 1 ;;
         esac
     done
 
-    # Reset nécessite root
     if $flag_reset; then
         if [ "$EUID" -ne 0 ]; then
-            echo "[ERREUR] Le flag -r nécessite les droits root."
+            echo "[ERREUR] Le flag -r necessite les droits root."
             log "ERROR" "Tentative de reset sans droits root."
             exit 1
         fi
+        rm -f "$LOG_FILE"
+        init_logger
+        log "INFO" "Logs reinitialises par root"
+        exit 0
     fi
 
-    # Si -a → on active tous les scanners
     if $flag_all; then
         flag_ports=true
         flag_processes=true
@@ -95,50 +91,33 @@ main() {
         flag_logs=true
     fi
 
-    # --simulate-attack (géré séparément car c'est --  pas -)
-    for arg in "$@"; do
-        if [ "$arg" = "--simulate-attack" ]; then
-            flag_simulate=true
-        fi
-    done
-
-    # -----------------------------------------------
-    # EXÉCUTION DES SCANNERS
-    # -----------------------------------------------
-
-    # Exécution en parallèle (-t flag)
     if $flag_parallel; then
-        echo "[*] Mode parallèle activé..."
+        log "INFO" "Mode parallele active"
         $flag_ports     && scan_ports &
         $flag_processes && scan_processes &
-        $flag_files     && scan_files &                                    
-        $flag_logs      && scan_logs "${custom_log_dir:-$LOG_SCAN_DIR}" &  
-        wait   # attend que tous les processus background finissent
-        echo "[*] Tous les scans parallèles terminés."
+        $flag_files     && scan_files &
+        $flag_logs      && scan_logs "${custom_log_dir:-$LOG_SCAN_DIR}" &
+        wait
+        log "INFO" "Tous les scans paralleles termines"
 
-    # Exécution en subshell (-s flag)
     elif $flag_subshell; then
-        echo "[*] Mode subshell activé..."
+        log "INFO" "Mode subshell active"
         $flag_ports     && ( scan_ports )
         $flag_processes && ( scan_processes )
-        $flag_files     && ( scan_files )                                    
-        $flag_logs      && ( scan_logs "${custom_log_dir:-$LOG_SCAN_DIR}" ) 
+        $flag_files     && ( scan_files )
+        $flag_logs      && ( scan_logs "${custom_log_dir:-$LOG_SCAN_DIR}" )
 
-    # Exécution normale séquentielle
     else
         $flag_ports     && scan_ports
         $flag_processes && scan_processes
-        $flag_files     && scan_files                                    
-        $flag_logs      && scan_logs "${custom_log_dir:-$LOG_SCAN_DIR}" 
+        $flag_files     && scan_files
+        $flag_logs      && scan_logs "${custom_log_dir:-$LOG_SCAN_DIR}"
     fi
 
-    # Simulation d'attaque
     $flag_simulate && simulate_attack
 
-    # Calcul du score final
     scoring_engine
-
 }
 
-# ---------- POINT D'ENTRÉE ----------
+# ---------- POINT D'ENTREE ----------
 main "$@"
