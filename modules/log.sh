@@ -1,25 +1,45 @@
 #!/bin/bash
-# ==============================================
-# MODULE : log.sh  (version temporaire pour tests)
-# Le vrai sera fait par Member 1
-# ==============================================
+# ============================================================
+# log.sh — Systeme de journalisation central
+# Auteur  : Membre 1 (Bessar)
+# Utilise par : TOUTES les fonctions du projet
+# ============================================================
+
+LOG_DIR="/var/log/autodefender"
+LOG_FILE="$LOG_DIR/autodefender.log"
 
 log() {
-    local level="$1"    # INFO ou ERROR ou WARNING
-    local message="$2"  # Le message
+    local level="$1"
+    local message="$2"
 
-    # Format : yyyy-mm-dd-hh-mm-ss : user : LEVEL : message
     local timestamp
     timestamp=$(date +"%Y-%m-%d-%H-%M-%S")
 
     local user
     user=$(whoami)
 
-    # Affiche dans le terminal
-    echo "$timestamp : $user : $level : $message"
+    local log_line="$timestamp : $user : $level : $message"
 
-    # Écrit dans le fichier log si le dossier existe
+    # Affichage couleur dans le terminal
+    case "$level" in
+        INFO)    echo -e "\e[32m[INFO]\e[0m    $log_line" ;;
+        WARNING) echo -e "\e[33m[WARNING]\e[0m $log_line" ;;
+        ERROR)   echo -e "\e[31m[ERROR]\e[0m   $log_line" ;;
+        *)       echo "[LOG] $log_line" ;;
+    esac
+
+    # Ecriture dans le fichier
     if [ -d "$LOG_DIR" ]; then
-        echo "$timestamp : $user : $level : $message" >> "$LOG_FILE"
+        echo "$log_line" >> "$LOG_FILE"
     fi
+}
+
+init_logger() {
+    if [ ! -d "$LOG_DIR" ]; then
+        mkdir -p "$LOG_DIR"
+    fi
+    if [ ! -f "$LOG_FILE" ]; then
+        touch "$LOG_FILE"
+    fi
+    log "INFO" "AutoDefender demarre - logger initialise"
 }
